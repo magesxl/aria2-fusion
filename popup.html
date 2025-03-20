@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Modern Aria2 Manager</title>
+  <!-- 引用本地的 Tailwind CSS 文件 -->
+  <link href="tailwind.min.css" rel="stylesheet">
+  <script src="mustache.min.js"></script>
+</head>
+
+<body class="bg-white text-gray-800 h-[600px] w-[400px] overflow-hidden">
+  <div class="flex flex-col h-full">
+    <!-- Header Section -->
+    <header class="p-4 bg-white border-b border-gray-200 shadow-sm">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            class="w-6 h-6 text-[#0284c7]" style="color: #0284c7;">
+            <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path>
+            <path d="M12 12v9"></path>
+            <path d="m8 17 4 4 4-4"></path>
+          </svg>
+          <h1 class="text-xl font-semibold text-gray-800">Aria2 Fusion</h1>
+        </div>
+        <div id="connectionIndicator"
+          class="px-3 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          已连接
+        </div>
+      </div>
+    </header>
+
+    <!-- Control Panel -->
+    <div class="p-4 bg-gray-50 border-b border-gray-200">
+      <div class="flex items-center justify-end gap-1">
+        <!-- 三个按钮靠右排列，间距更小 -->
+        <button id="addTaskBtn"
+          class="p-2.5 rounded-lg bg-white hover:bg-gray-100 transition-all border border-gray-200 shadow-sm"
+          title="添加任务">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            class="w-5 h-5 text-gray-600">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+        <button id="clearTasksBtn"
+          class="p-2.5 rounded-lg bg-white hover:bg-gray-100 transition-all border border-gray-200 shadow-sm"
+          title="清空任务">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            class="w-5 h-5 text-gray-600">
+            <path d="M3 6h18"></path>
+            <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+            <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+            <line x1="10" y1="11" x2="10" y2="17"></line>
+            <line x1="14" y1="11" x2="14" y2="17"></line>
+          </svg>
+        </button>
+        <button id="settingsBtn"
+          class="p-2.5 rounded-lg bg-white hover:bg-gray-100 transition-all border border-gray-200 shadow-sm"
+          title="设置">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+            class="w-5 h-5 text-gray-600">
+            <path
+              d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z">
+            </path>
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div id="mainContent" class="flex-1 overflow-y-auto hide-scrollbar p-4 bg-white">
+      <!-- Download Items -->
+      <div class="space-y-3" id="download-list">
+        <!-- 下载项将基于后端返回数据渲染，根据不同状态显示不同UI -->
+        <!-- 通用下载项模板 - 使用JavaScript模板渲染 -->
+      </div>
+    </div>
+
+    <!-- Settings Panel (hidden by default) -->
+    <!-- Settings Panel (hidden by default) -->
+    <div id="settingsContent" class="absolute inset-0 bg-white p-4 hidden">
+      <div class="h-full overflow-y-auto hide-scrollbar">
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="text-xl font-semibold text-gray-800">设置</h2>
+          <button id="backToMain" class="p-2 rounded-lg hover:bg-gray-100 transition-all">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+              class="w-5 h-5 text-gray-600">
+              <path d="M18 6 6 18"></path>
+              <path d="m6 6 12 12"></path>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Aria2 Connection Settings -->
+        <div class="mb-6 bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+          <h3 class="text-base font-medium text-gray-800 mb-3 pb-2 border-b border-gray-100">Aria2 连接设置</h3>
+
+          <div class="space-y-4">
+            <div class="space-y-1.5">
+              <label for="aria2host" class="block text-sm font-medium text-gray-700">主机地址</label>
+              <input type="text" id="aria2host" placeholder="localhost 或 IP 地址"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors text-sm">
+            </div>
+
+            <div class="space-y-1.5">
+              <label for="aria2port" class="block text-sm font-medium text-gray-700">端口</label>
+              <input type="number" id="aria2port" placeholder="6800"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors text-sm">
+            </div>
+
+            <div class="space-y-1.5">
+              <label for="aria2path" class="block text-sm font-medium text-gray-700">RPC 路径</label>
+              <input type="text" id="aria2path" placeholder="/jsonrpc"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors text-sm">
+            </div>
+
+            <div class="space-y-1.5">
+              <label for="aria2secret" class="block text-sm font-medium text-gray-700">RPC 密钥</label>
+              <input type="password" id="aria2secret" placeholder="没有密钥则留空"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors text-sm">
+            </div>
+
+            <div class="flex items-center">
+              <input type="checkbox" id="aria2secure"
+                class="w-4 h-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded">
+              <label for="aria2secure" class="ml-2 block text-sm text-gray-700">使用 HTTPS 安全连接</label>
+            </div>
+          </div>
+
+          <div id="connectionStatus" class="mt-4 text-sm text-gray-500"></div>
+
+          <button id="testConnection"
+            class="mt-4 w-full flex justify-center py-2 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors">
+            测试连接
+          </button>
+        </div>
+
+        <!-- Download Settings -->
+        <div class="mb-6 bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+          <h3 class="text-base font-medium text-gray-800 mb-3 pb-2 border-b border-gray-100">下载设置</h3>
+
+          <div class="space-y-4">
+            <div class="flex items-center">
+              <input type="checkbox" id="aria2enabled"
+                class="w-4 h-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded">
+              <label for="aria2enabled" class="ml-2 block text-sm text-gray-700">启用自动拦截下载</label>
+            </div>
+
+            <div class="space-y-1.5">
+              <label for="aria2fileSize" class="block text-sm font-medium text-gray-700">最小文件大小 (MB)</label>
+              <input type="number" id="aria2fileSize" placeholder="10"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors text-sm">
+              <p class="mt-1 text-xs text-gray-500">大于此大小的文件将自动发送到 Aria2 下载，小于此大小的文件将使用浏览器默认下载。</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex gap-3 mb-4">
+          <button id="resetSettings"
+            class="flex-1 py-2.5 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors">
+            重置
+          </button>
+          <button id="saveSettings"
+            class="flex-1 py-2.5 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors">
+            保存设置
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add Task Modal -->
+    <div id="addTaskModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center hidden">
+      <div class="relative w-[90%] max-w-md bg-white rounded-xl shadow-2xl overflow-hidden">
+        <!-- Modal Header -->
+        <div class="px-6 py-4 border-b border-gray-200 flex items-center justify-between">
+          <h2 class="text-lg font-semibold text-gray-800">添加下载任务</h2>
+          <button class="close-modal p-1.5 rounded-lg hover:bg-gray-100 transition-all">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+              class="w-5 h-5 text-gray-600">
+              <path d="M18 6 6 18"></path>
+              <path d="m6 6 12 12"></path>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Modal Body -->
+        <div class="p-6 space-y-4">
+          <div class="space-y-1.5">
+            <label for="downloadUrl" class="block text-sm font-medium text-gray-700">下载链接</label>
+            <input type="text" id="downloadUrl" placeholder="输入URL..."
+              class="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors">
+          </div>
+
+          <div class="space-y-1.5">
+            <label for="downloadPath" class="block text-sm font-medium text-gray-700">保存路径</label>
+            <div class="flex items-center">
+              <input type="text" id="downloadPath" placeholder="默认下载位置"
+                class="flex-1 px-3 py-2.5 border border-gray-300 rounded-lg rounded-r-none focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors">
+              <button
+                class="px-3 py-2.5 border border-l-0 border-gray-300 rounded-lg rounded-l-none bg-gray-50 hover:bg-gray-100 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                  class="w-5 h-5 text-gray-600">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Advanced Options Accordion -->
+          <div class="border border-gray-200 rounded-lg overflow-hidden">
+            <button id="advancedOptionsToggle"
+              class="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors">
+              <span class="text-sm font-medium text-gray-700">高级选项</span>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                class="w-4 h-4 text-gray-600">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+
+            <!-- Advanced Options Content (Hidden by default) -->
+            <div id="advancedOptionsContent" class="hidden p-4 bg-white space-y-3 border-t border-gray-200">
+              <div class="space-y-1.5">
+                <label class="block text-sm font-medium text-gray-700">下载优先级</label>
+                <select id="downloadPriority"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors text-sm">
+                  <option value="0">正常</option>
+                  <option value="1">高</option>
+                  <option value="2">最高</option>
+                </select>
+              </div>
+
+              <div class="flex items-center">
+                <input type="checkbox" id="splitDownload"
+                  class="w-4 h-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded">
+                <label for="splitDownload" class="ml-2 block text-sm text-gray-700">分段下载</label>
+              </div>
+
+              <div class="space-y-1.5">
+                <label for="connections" class="block text-sm font-medium text-gray-700">连接数</label>
+                <input type="number" id="connections" value="5" min="1" max="16"
+                  class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors text-sm">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Modal Footer -->
+        <div class="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
+          <button
+            class="cancel-btn px-4 py-2 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors">
+            取消
+          </button>
+          <button
+            class="confirm-btn px-4 py-2 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 transition-colors">
+            开始下载
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .hide-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    .hide-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+  <script src="popup.js"></script>
+</body>
+
+</html>
