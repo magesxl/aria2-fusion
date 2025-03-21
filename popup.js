@@ -38,7 +38,448 @@ document.addEventListener('DOMContentLoaded', () => {
   // 定期刷新主页面
   const refreshInterval = 1000; // 2秒
   setInterval(refreshMainPage, refreshInterval);
+
+  initHeartbeatChart();
+  setupEventListeners();
+  // 确保在窗口调整大小时Canvas保持正确高度
+  window.addEventListener('resize', function () {
+    const canvas = document.getElementById('downloadHeartbeat');
+    canvas.style.height = '24px';
+    if (heartbeatChart) {
+      heartbeatChart.resize();
+    }
+  });
 });
+
+
+
+// 全局变量
+let heartbeatChart; // 图表对象
+let speedHistory = [0]; // 历史速度数据，初始化为一个点
+let speedMonitorInterval; // 定时器ID
+const MAX_DATA_POINTS = 30; // 数据点数量
+let clickTooltip = null; // 点击提示元素
+
+// 初始化下载速度图表
+function initHeartbeatChart() {
+  const canvas = document.getElementById('downloadHeartbeat');
+  const ctx = canvas.getContext('2d');
+
+  // 确保canvas高度与容器高度一致
+  canvas.style.height = '24px';
+  canvas.height = 24;
+
+  // 创建渐变背景 - 使用蓝色主题，更醒目清晰
+  const gradient = ctx.createLinearGradient(0, 0, 0, 24);
+  gradient.addColorStop(0, 'rgba(59, 130, 246, 0.6)');   // 蓝色顶部
+  gradient.addColorStop(0.6, 'rgba(59, 130, 246, 0.2)'); // 蓝色中部
+  gradient.addColorStop(1, 'rgba(59, 130, 246, 0.05)');  // 蓝色底部
+
+  // 初始数据配置 - 设置为单点模式
+  const data = {
+    labels: [''],
+    datasets: [{
+      data: [0], // 初始单点数据
+      borderColor: '#3B82F6', // 蓝色线条
+      borderWidth: 2, // 稍粗的线条更清晰
+      backgroundColor: gradient,
+      tension: 0.3, // 平滑程度
+      fill: true,
+      pointRadius: 4, // 初始点要清晰可见
+      pointHoverRadius: 5,
+      pointBackgroundColor: '#3B82F6',
+      pointBorderColor: '#FFFFFF',
+      pointBorderWidth: 1.5,
+      cubicInterpolationMode: 'monotone',
+      showLine: false, // 初始不显示线条，只显示点
+    }]
+  };
+
+  // 图表配置
+  const config = {
+    type: 'line',
+    data: data,
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: {
+        padding: {
+          top: 2,
+          right: 0,
+          bottom: 2,
+          left: 0
+        }
+      },
+      plugins: {
+        legend: {
+          display: false
+        },
+        tooltip: {
+          enabled: false // 禁用内置tooltip，使用自定义tooltip
+        }
+      },
+      scales: {
+        x: {
+          display: false
+        },
+        y: {
+          display: false,
+          min: 0,
+          max: 100, // 初始最大值
+          grace: '10%'
+        }
+      },
+      interaction: {
+        mode: 'nearest',
+        axis: 'x',
+        intersect: false,
+      },
+      animation: {
+        duration: 400,
+        easing: 'easeOutCubic'
+      },
+      elements: {
+        line: {
+          borderJoinStyle: 'round',
+          borderCapStyle: 'round',
+        },
+        point: {
+          hitRadius: 10,
+          hoverRadius: 5
+        }
+      }
+    }
+  };
+
+  // 创建图表
+  heartbeatChart = new Chart(ctx, config);
+
+  // 重新定位速度提示到右上角
+  repositionSpeedTooltip();
+
+  // 添加自定义CSS以确保画布和容器高度一致
+  const style = document.createElement('style');
+  style.textContent = `
+    #downloadHeartbeat {
+      height: 24px !important;
+      max-height: 24px !important;
+      cursor: pointer; /* 添加指针样式表示可点击 */
+    }
+    .download-stats {
+      position: relative;
+    }
+    #speedTooltip {
+      background-color: rgba(15, 23, 42, 0.95) !important;
+      border: 1px solid rgba(59, 130, 246, 0.3) !important;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+      font-size: 0.75rem !important;
+      z-index: 50 !important;
+    }
+    #downloadSpeed {
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    .click-tooltip {
+      position: absolute;
+      background-color: rgba(15, 23, 42, 0.95);
+      color: white;
+      border: 1px solid rgba(59, 130, 246, 0.5);
+      border-radius: 4px;
+      padding: 4px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      pointer-events: none;
+      white-space: nowrap;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+      z-index: 100;
+      animation: fadeIn 0.2s ease-out;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  `;
+  document.head.appendChild(style);
+
+  // 添加点击事件监听器
+  canvas.addEventListener('click', handleChartClick);
+
+  // 启动定时获取下载速度
+  startSpeedMonitoring();
+}
+
+// 将速度提示重新定位到右上角
+function repositionSpeedTooltip() {
+  const tooltip = document.getElementById('speedTooltip');
+  if (tooltip) {
+    // 移除原来的定位类
+    tooltip.classList.remove('top-full', 'left-1/2', 'transform', '-translate-x-1/2', 'mt-1');
+    
+    // 添加右上角定位类
+    tooltip.classList.add('top-0', 'right-0', 'transform', 'translate-y-[-120%]', 'mr-0');
+    
+    // 修改其他样式使其更合适右上角显示
+    tooltip.style.borderRadius = '4px';
+    tooltip.style.padding = '3px 6px';
+    tooltip.style.minWidth = '80px';
+    tooltip.style.textAlign = 'center';
+  }
+}
+
+// 处理图表点击事件
+function handleChartClick(event) {
+  const canvas = event.target;
+  const rect = canvas.getBoundingClientRect();
+  const x = event.clientX - rect.left;
+  const canvasWidth = rect.width;
+  
+  // 根据点击位置计算数据索引
+  const clickedIndex = Math.round((x / canvasWidth) * (speedHistory.length - 1));
+  
+  // 确保索引在有效范围内
+  if (clickedIndex >= 0 && clickedIndex < speedHistory.length) {
+    const clickedSpeed = speedHistory[clickedIndex];
+    const formattedSpeed = formatBytes(clickedSpeed) + '/s';
+    
+    // 显示点击提示
+    showClickTooltip(event.clientX, event.clientY, formattedSpeed, clickedSpeed > 0);
+    
+    // 高亮显示被点击的点
+    highlightDataPoint(clickedIndex);
+  }
+}
+
+// 显示点击提示
+function showClickTooltip(x, y, text, isActive) {
+  // 移除旧的提示（如果存在）
+  if (clickTooltip) {
+    document.body.removeChild(clickTooltip);
+  }
+  
+  // 创建提示元素
+  clickTooltip = document.createElement('div');
+  clickTooltip.className = 'click-tooltip';
+  clickTooltip.textContent = text;
+  
+  // 设置位置在鼠标右上方
+  clickTooltip.style.left = (x + 10) + 'px';
+  clickTooltip.style.top = (y - 30) + 'px';
+  
+  // 根据是否有下载设置颜色
+  if (isActive) {
+    clickTooltip.style.borderColor = 'rgba(59, 130, 246, 0.5)';
+  } else {
+    clickTooltip.style.borderColor = 'rgba(107, 114, 128, 0.5)';
+    clickTooltip.style.color = 'rgba(255, 255, 255, 0.7)';
+  }
+  
+  // 添加到文档
+  document.body.appendChild(clickTooltip);
+  
+  // 2秒后自动移除提示
+  setTimeout(() => {
+    if (clickTooltip) {
+      clickTooltip.style.opacity = '0';
+      clickTooltip.style.transition = 'opacity 0.3s ease-out';
+      
+      setTimeout(() => {
+        if (clickTooltip && clickTooltip.parentNode) {
+          document.body.removeChild(clickTooltip);
+          clickTooltip = null;
+        }
+      }, 300);
+    }
+  }, 2000);
+}
+
+// 高亮显示被点击的数据点
+function highlightDataPoint(index) {
+  // 创建临时点半径数组
+  const pointRadiusArray = Array(speedHistory.length).fill(0);
+  
+  // 设置点击的点和最后一个点为可见
+  pointRadiusArray[index] = 5; // 点击的点稍大
+  if (index !== speedHistory.length - 1) {
+    pointRadiusArray[speedHistory.length - 1] = 3; // 最后点保持可见
+  }
+  
+  // 更新图表
+  heartbeatChart.data.datasets[0].pointRadius = pointRadiusArray;
+  
+  // 设置点击点的特殊颜色
+  const pointBackgroundColors = Array(speedHistory.length).fill('#3B82F6');
+  pointBackgroundColors[index] = '#F59E0B'; // 黄色高亮点击的点
+  heartbeatChart.data.datasets[0].pointBackgroundColor = pointBackgroundColors;
+  
+  heartbeatChart.update();
+  
+  // 1.5秒后恢复
+  setTimeout(() => {
+    const normalPointRadiusArray = Array(speedHistory.length).fill(0);
+    normalPointRadiusArray[speedHistory.length - 1] = 3; // 恢复只显示最后一个点
+    heartbeatChart.data.datasets[0].pointRadius = normalPointRadiusArray;
+    heartbeatChart.data.datasets[0].pointBackgroundColor = '#3B82F6';
+    heartbeatChart.update();
+  }, 1500);
+}
+
+// 开始监控下载速度
+function startSpeedMonitoring() {
+  // 立即执行一次
+  updateDownloadSpeed();
+
+  // 每秒获取一次下载速度
+  speedMonitorInterval = setInterval(updateDownloadSpeed, 1000);
+}
+
+// 更新下载速度
+function updateDownloadSpeed() {
+  // 构建aria2.getGlobalStats请求
+  getGlobalStat()
+    .then(task => {
+      // 获取下载速度 (字节/秒)
+      const downloadSpeed = parseInt(task.downloadSpeed);
+
+      // 添加新数据
+      speedHistory.push(downloadSpeed);
+
+      // 保持固定数量的数据点
+      if (speedHistory.length > MAX_DATA_POINTS) {
+        speedHistory.shift();
+      }
+
+      // 更新图表显示
+      updateHeartbeatChart(downloadSpeed);
+    }).catch(error => {
+      console.error('Error fetching aria2 stats:', error);
+
+      // 错误时也添加数据点(0)以保持图表连续性
+      if (speedHistory.length > 0) {
+        speedHistory.push(0);
+        if (speedHistory.length > MAX_DATA_POINTS) {
+          speedHistory.shift();
+        }
+        updateHeartbeatChart(0, true);
+      }
+    });
+}
+
+// 更新图表函数
+function updateHeartbeatChart(currentSpeed, isError = false) {
+  // 检查是否应该切换到线图模式
+  const shouldShowLine = speedHistory.length > 1;
+  
+  if (speedHistory.length > 0) {
+    // 计算更贴近数据实际范围的Y轴
+    const minSpeed = Math.min(...speedHistory);
+    const maxSpeed = Math.max(...speedHistory) || 100; // 避免全0数据时没有高度
+    const range = maxSpeed - minSpeed;
+
+    // 设置Y轴范围
+    heartbeatChart.options.scales.y = {
+      display: false,
+      min: Math.max(0, minSpeed - range * 0.1),
+      max: maxSpeed + range * 0.2,
+    };
+
+    // 更新数据
+    heartbeatChart.data.labels = Array(speedHistory.length).fill('');
+    heartbeatChart.data.datasets[0].data = speedHistory;
+    
+    // 设置线条显示/隐藏状态
+    heartbeatChart.data.datasets[0].showLine = shouldShowLine;
+
+    // 根据状态设置颜色
+    if (isError) {
+      // 错误状态 - 使用红色
+      heartbeatChart.data.datasets[0].borderColor = '#EF4444';
+      heartbeatChart.data.datasets[0].pointBackgroundColor = '#EF4444';
+      
+      const ctx = document.getElementById('downloadHeartbeat').getContext('2d');
+      const errorGradient = ctx.createLinearGradient(0, 0, 0, 24);
+      errorGradient.addColorStop(0, 'rgba(239, 68, 68, 0.6)');
+      errorGradient.addColorStop(0.6, 'rgba(239, 68, 68, 0.2)');
+      errorGradient.addColorStop(1, 'rgba(239, 68, 68, 0.05)');
+      heartbeatChart.data.datasets[0].backgroundColor = errorGradient;
+    } else if (currentSpeed === 0) {
+      // 无下载状态 - 使用灰色
+      heartbeatChart.data.datasets[0].borderColor = '#6B7280';
+      heartbeatChart.data.datasets[0].pointBackgroundColor = '#6B7280';
+      
+      const ctx = document.getElementById('downloadHeartbeat').getContext('2d');
+      const grayGradient = ctx.createLinearGradient(0, 0, 0, 24);
+      grayGradient.addColorStop(0, 'rgba(107, 114, 128, 0.5)');
+      grayGradient.addColorStop(0.6, 'rgba(107, 114, 128, 0.2)');
+      grayGradient.addColorStop(1, 'rgba(107, 114, 128, 0.05)');
+      heartbeatChart.data.datasets[0].backgroundColor = grayGradient;
+    } else {
+      // 正常下载状态 - 使用蓝色
+      heartbeatChart.data.datasets[0].borderColor = '#3B82F6';
+      heartbeatChart.data.datasets[0].pointBackgroundColor = '#3B82F6';
+      
+      const ctx = document.getElementById('downloadHeartbeat').getContext('2d');
+      const blueGradient = ctx.createLinearGradient(0, 0, 0, 24);
+      blueGradient.addColorStop(0, 'rgba(59, 130, 246, 0.6)');
+      blueGradient.addColorStop(0.6, 'rgba(59, 130, 246, 0.2)');
+      blueGradient.addColorStop(1, 'rgba(59, 130, 246, 0.05)');
+      heartbeatChart.data.datasets[0].backgroundColor = blueGradient;
+    }
+
+    // 设置点的显示
+    if (speedHistory.length === 1) {
+      // 只有一个点时，显示较大的点
+      heartbeatChart.data.datasets[0].pointRadius = 4;
+    } else {
+      // 多个点时，只在末尾显示点
+      const pointRadiusArray = Array(speedHistory.length).fill(0);
+      pointRadiusArray[speedHistory.length - 1] = 3;
+      heartbeatChart.data.datasets[0].pointRadius = pointRadiusArray;
+    }
+
+    // 应用更新
+    heartbeatChart.update();
+  }
+
+  // 下载速度显示优化
+  const speedElement = document.getElementById('downloadSpeed');
+
+  if (isError) {
+    speedElement.textContent = '连接错误';
+    speedElement.className = 'text-red-500';
+  } else {
+    // 添加趋势指示器
+    let trendIndicator = '';
+    if (speedHistory.length >= 2) {
+      const current = speedHistory[speedHistory.length - 1];
+      const previous = speedHistory[speedHistory.length - 2];
+      if (current > previous * 1.1) {
+        trendIndicator = ' ↑'; // 上升
+      } else if (current < previous * 0.9) {
+        trendIndicator = ' ↓'; // 下降
+      }
+    }
+
+    // 格式化速度，为0时特殊处理
+    if (currentSpeed === 0) {
+      speedElement.textContent = '待机中';
+      speedElement.className = 'text-gray-400';
+    } else {
+      speedElement.textContent = formatBytes(currentSpeed) + '/s' + trendIndicator;
+      speedElement.className = 'text-blue-500 font-bold';
+    }
+  }
+  
+  // 确保tooltip始终可见，无需hover
+  const tooltip = document.getElementById('speedTooltip');
+  if (tooltip) {
+    tooltip.classList.remove('opacity-0', 'group-hover:opacity-100', 'pointer-events-none');
+    tooltip.classList.add('opacity-100');
+  }
+}
+
+
+
+
 
 // 设置所有事件监听器
 function setupEventListeners() {
@@ -89,6 +530,22 @@ function setupEventListeners() {
 
   // 为下载列表添加委托事件处理
   document.getElementById('download-list').addEventListener('click', handleDownloadItemAction);
+
+  // 添加鼠标悬停事件处理
+  const heartbeatContainer = document.getElementById('downloadHeartbeat').parentNode;
+
+  heartbeatContainer.addEventListener('mouseenter', function () {
+    document.getElementById('speedTooltip').style.opacity = 1;
+  });
+
+  heartbeatContainer.addEventListener('mouseleave', function () {
+    document.getElementById('speedTooltip').style.opacity = 0;
+  });
+
+  // 页面关闭前清除定时器
+  window.addEventListener('beforeunload', function () {
+    clearInterval(speedMonitorInterval);
+  });
 }
 
 // 高级选项显示/隐藏切换
@@ -1237,7 +1694,9 @@ function purgeDownloadResult(gid) {
     .then(() => renderDownloads())
     .catch(error => console.error('清空下载结果出错:', error));
 }
-
+function getGlobalStat() {
+  return sendAria2Request('aria2.getGlobalStat', []);
+}
 // 重试下载
 function retryDownload(gid) {
   // 先获取任务信息
