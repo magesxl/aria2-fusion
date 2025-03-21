@@ -823,7 +823,6 @@ function testConnection() {
   statusEl.className = 'connection-status';
   sendAria2Request("aria2.getVersion", [])
     .then(task => {
-      console.log('task', task);
       if (task.version) {
         statusEl.textContent = `连接成功！Aria2 版本: ${task.version}`;
         statusEl.className = 'connection-status success';
@@ -851,7 +850,6 @@ function updateConnectionIndicator() {
   }
   sendAria2Request("aria2.getVersion", [])
     .then(task => {
-      console.log('task', task);
       if (task.version) {
         indicator.textContent = '已连接';
         indicator.className = 'px-3 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 border border-emerald-200 flex items-center gap-1.5';
