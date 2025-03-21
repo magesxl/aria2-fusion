@@ -389,6 +389,9 @@ function updateSingleDownloadItem(existingElement, item, templateHTML) {
         case 'active':
           highlightColor = '#e6f7ff';
           break;
+        case 'waiting':
+          highlightColor = '#f9f0ff';  // Light purple for waiting status
+          break;
         case 'complete':
           highlightColor = '#e6ffed';
           break;
@@ -644,96 +647,6 @@ function renderDownloads() {
       }
     });
 }
-
-
-
-
-// 格式化字节数为可读大小
-function formatBytes(bytes, decimals = 2) {
-  if (!bytes || bytes === 0) return '0 B';
-
-  const k = 1024;
-  const dm = decimals < 0 ? 0 : decimals;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
-
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-}
-
-// 暂停下载
-function pauseDownload(gid) {
-  sendAria2Request('aria2.pause', [gid])
-    .then(() => renderDownloads())
-    .catch(error => console.error('暂停下载时出错:', error));
-}
-
-// 继续下载
-function resumeDownload(gid) {
-  sendAria2Request('aria2.unpause', [gid])
-    .then(() => renderDownloads())
-    .catch(error => console.error('继续下载时出错:', error));
-}
-
-// 删除下载
-function removeDownload(gid) {
-  sendAria2Request('aria2.removeDownloadResult', [gid])
-    .then(() => renderDownloads())
-    .catch(error => console.error('删除下载时出错:', error));
-}
-// 删除下载
-function forceRemoveDownload(gid) {
-  sendAria2Request('aria2.forceRemove', [gid])
-    .then(() => renderDownloads())
-    .catch(error => console.error('删除下载时出错:', error));
-}
-
-function purgeDownloadResult(gid) {
-  sendAria2Request('aria2.purgeDownloadResult', [gid])
-    .then(() => renderDownloads())
-    .catch(error => console.error('清空下载结果出错:', error));
-}
-
-// 重试下载
-function retryDownload(gid) {
-  // 先获取任务信息
-  getAria2Task(gid)
-    .then(task => {
-      if (task.files && task.files.length > 0 && task.files[0].uris && task.files[0].uris.length > 0) {
-        const url = task.files[0].uris[0].uri;
-        const dir = task.dir;
-
-        // 先删除旧任务
-        return forceRemoveDownload(gid)
-          .then(() => {
-            // 添加新任务
-            return addDownloadTask(url, dir);
-          });
-      } else {
-        throw new Error('获取下载链接失败');
-      }
-    })
-    .then(() => renderDownloads())
-    .catch(error => console.error('重试下载时出错:', error));
-}
-
-// 打开下载文件夹
-function openDownloadFolder(gid) {
-  // 获取任务信息
-  return sendAria2Request('aria2.tellStatus', [gid])
-    .then(task => {
-      if (task.dir) {
-        // 如果在插件环境中，发送消息给background.js打开文件夹
-        if (chrome && chrome.runtime) {
-          chrome.runtime.sendMessage({
-            action: 'openFolder',
-            path: task.dir
-          });
-        }
-      }
-    });
-}
-
 
 // 添加下载任务
 function addDownloadTask(url, dir) {
@@ -1083,7 +996,7 @@ function createDownloadItemTemplate() {
         <div class="flex items-center gap-1">
           <!-- 状态特定按钮 - 将根据状态显示/隐藏 -->
           <!-- active状态 - 显示暂停按钮 -->
-          <button class="action-btn p-1.5 rounded-lg hover:bg-gray-100 transition-all" data-show-on="active"
+          <button class="action-btn p-1.5 rounded-lg hover:bg-gray-100 transition-all" data-show-on="active,waiting"
             title="暂停">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
               stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
@@ -1158,10 +1071,7 @@ function createDownloadItemTemplate() {
             <span>{{speed}}/s</span>
           </div>
           <div class="flex items-center gap-1" data-show-on="paused,waiting">
-            <!-- paused状态显示状态标签 -->
-            <span class="status-badge px-2 py-0.5 rounded-full" data-show-on="paused" data-status="paused">{{status_text}}</span>
-            <!-- waiting状态显示等待信息 -->
-            <span class="status-badge px-2 py-0.5 rounded-full" data-show-on="waiting" data-status="waiting">{{status_text}}</span>
+            <span class="status-badge px-2 py-0.5 rounded-full" data-show-on="{{status}}" data-status="{{status}}">{{status_text}}</span>
           </div>         
         </div>
       </div>
@@ -1282,4 +1192,90 @@ function convertTaskToDownloadItem(task) {
     error_message: errorMessage.slice(0, 40),
     filesize: total
   };
+}
+
+// 格式化字节数为可读大小
+function formatBytes(bytes, decimals = 2) {
+  if (!bytes || bytes === 0) return '0 B';
+
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+}
+
+// 暂停下载
+function pauseDownload(gid) {
+  sendAria2Request('aria2.pause', [gid])
+    .then(() => renderDownloads())
+    .catch(error => console.error('暂停下载时出错:', error));
+}
+
+// 继续下载
+function resumeDownload(gid) {
+  sendAria2Request('aria2.unpause', [gid])
+    .then(() => renderDownloads())
+    .catch(error => console.error('继续下载时出错:', error));
+}
+
+// 删除下载
+function removeDownload(gid) {
+  sendAria2Request('aria2.removeDownloadResult', [gid])
+    .then(() => renderDownloads())
+    .catch(error => console.error('删除下载时出错:', error));
+}
+// 删除下载
+function forceRemoveDownload(gid) {
+  sendAria2Request('aria2.forceRemove', [gid])
+    .then(() => renderDownloads())
+    .catch(error => console.error('删除下载时出错:', error));
+}
+
+function purgeDownloadResult(gid) {
+  sendAria2Request('aria2.purgeDownloadResult', [gid])
+    .then(() => renderDownloads())
+    .catch(error => console.error('清空下载结果出错:', error));
+}
+
+// 重试下载
+function retryDownload(gid) {
+  // 先获取任务信息
+  getAria2Task(gid)
+    .then(task => {
+      if (task.files && task.files.length > 0 && task.files[0].uris && task.files[0].uris.length > 0) {
+        const url = task.files[0].uris[0].uri;
+        const dir = task.dir;
+
+        // 先删除旧任务
+        return forceRemoveDownload(gid)
+          .then(() => {
+            // 添加新任务
+            return addDownloadTask(url, dir);
+          });
+      } else {
+        throw new Error('获取下载链接失败');
+      }
+    })
+    .then(() => renderDownloads())
+    .catch(error => console.error('重试下载时出错:', error));
+}
+
+// 打开下载文件夹
+function openDownloadFolder(gid) {
+  // 获取任务信息
+  return sendAria2Request('aria2.tellStatus', [gid])
+    .then(task => {
+      if (task.dir) {
+        // 如果在插件环境中，发送消息给background.js打开文件夹
+        if (chrome && chrome.runtime) {
+          chrome.runtime.sendMessage({
+            action: 'openFolder',
+            path: task.dir
+          });
+        }
+      }
+    });
 }
