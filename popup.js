@@ -1732,12 +1732,11 @@ function retryDownload(gid) {
       if (task.files && task.files.length > 0 && task.files[0].uris && task.files[0].uris.length > 0) {
         const url = task.files[0].uris[0].uri;
         const dir = task.dir;
-
         // 先删除旧任务
-        return removeDownloadResult(gid)
+        sendAria2Request('aria2.removeDownloadResult', [gid])
           .then(() => {
             // 添加新任务
-            return addDownloadTask(url, dir);
+            addDownloadTask(url, dir);
           });
       } else {
         throw new Error('获取下载链接失败');
