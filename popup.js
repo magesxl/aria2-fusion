@@ -561,39 +561,24 @@ function toggleAdvancedOptions() {
 // 添加新下载任务
 function addNewDownloadTask() {
   const url = document.getElementById('downloadUrl').value;
-  const dir = document.getElementById('downloadPath').value;
 
   if (url) {
     // 获取高级选项
     const priority = document.getElementById('downloadPriority').value;
-    const split = document.getElementById('splitDownload').checked;
     const connections = document.getElementById('connections').value;
 
     // 构建下载选项
     const options = {
-      dir: dir || undefined,
-      split: split ? 'true' : 'false',
-      'max-connection-per-server': connections,
+      maxConnectionPerServer: connections,
       priority: priority
     };
 
     addDownloadTask(url, options)
-      .then(() => {
-        // 关闭模态窗口并重置表单
-        document.getElementById('addTaskModal').style.display = 'none';
-        document.getElementById('downloadUrl').value = '';
-        document.getElementById('downloadPath').value = '';
-        document.getElementById('splitDownload').checked = false;
-        document.getElementById('connections').value = '5';
-        document.getElementById('downloadPriority').value = '0';
-
-        // 刷新下载列表
-        renderDownloads();
-      })
-      .catch(error => {
-        console.error('添加下载任务失败:', error);
-        alert('添加下载任务失败: ' + error.message);
-      });
+    // 关闭模态窗口并重置表单
+    document.getElementById('addTaskModal').style.display = 'none';
+    document.getElementById('downloadUrl').value = '';
+    document.getElementById('connections').value = '5';
+    document.getElementById('downloadPriority').value = '0';
   } else {
     alert('请输入下载链接');
   }
@@ -1106,17 +1091,14 @@ function renderDownloads() {
 }
 
 // 添加下载任务
-function addDownloadTask(url, dir) {
-  // 在实际应用中，这里会调用Aria2 API添加下载任务
-  console.log(`Adding download task: ${url}, dir: ${dir}`);
-
+function addDownloadTask(url, options) {
+  console.log("Adding download task:", url, "options:", options);
   // 将URL发送到后台脚本处理
   chrome.runtime.sendMessage({
     action: 'addDownload',
     url: url,
-    filename: url.split('/').pop() || 'unknown-file'
+    options: options,
   });
-
   // 需要刷新界面
   renderDownloads();
 }
@@ -1731,12 +1713,14 @@ function retryDownload(gid) {
     .then(task => {
       if (task.files && task.files.length > 0 && task.files[0].uris && task.files[0].uris.length > 0) {
         const url = task.files[0].uris[0].uri;
-        const dir = task.dir;
+        // 构建下载选项
+        const options = {
+        };
         // 先删除旧任务
         sendAria2Request('aria2.removeDownloadResult', [gid])
           .then(() => {
             // 添加新任务
-            addDownloadTask(url, dir);
+            addDownloadTask(url, options);
           });
       } else {
         throw new Error('获取下载链接失败');

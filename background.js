@@ -65,10 +65,7 @@ chrome.downloads.onCreated.addListener((downloadItem) => {
         chrome.downloads.search({ id: downloadItem.id }, (results) => {
           if (results && results.length > 0) {
             const item = results[0];
-            let fileName = getFileName(item);
             console.log("search结果：", item);
-            console.log("文件名：", fileName);
-
             // 从下载列表移除（erase）
             chrome.downloads.erase({ id: downloadItem.id }, () => {
               if (chrome.runtime.lastError) {
@@ -77,7 +74,9 @@ chrome.downloads.onCreated.addListener((downloadItem) => {
               }
 
               console.log("从下载列表移除成功：", downloadItem.id);
-              sendToAria2(downloadItem.finalUrl, fileName, cookieString);
+              getFileName(item).then(fileName => {
+                sendToAria2(downloadItem.finalUrl, fileName, cookieString);
+              })
             });
 
           } else {
@@ -89,7 +88,7 @@ chrome.downloads.onCreated.addListener((downloadItem) => {
   }
 });
 
-function getFileName(item) {
+async function getFileName(item) {
   // 如果已有文件名，从路径中提取
   if (item.filename) {
     return item.filename.split(/[\\/]/).pop();
@@ -98,23 +97,39 @@ function getFileName(item) {
   try {
     // 尝试从URL中获取文件名
     if (item.finalUrl) {
-      const url = new URL(item.finalUrl);
-
-      // 检查是否有content-disposition参数
-      if (url.search.includes('filename')) {
-        const filenameMatch = url.search.match(/filename%3D([^&]+)/i);
-        if (filenameMatch && filenameMatch[1]) {
-          return decodeURIComponent(filenameMatch[1]);
+      // 如果URL解析无法获取文件名，尝试发送请求获取content-disposition
+      try {
+        const response = await fetch(item.finalUrl, {
+          method: 'HEAD',
+          credentials: 'include' // 包含cookies以处理需要认证的资源
+        });
+        if (!response.ok) {  // 检查响应状态
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
-      }
+        console.log("response:", response);
+        // 从响应头中获取content-disposition
+        const contentDisposition = response.headers.get('content-disposition');
+        console.log("contentDisposition:", contentDisposition);
+        if (contentDisposition) {
+          // 2.2 从 Content-Disposition 解析文件名 (更简洁的正则表达式)
+          const filenameMatch = contentDisposition.match(
+            /filename\*?=(?:UTF-8''|'|")?([^;'"\n]*)/i
+          );
 
-      // 从路径中获取文件名
-      const pathName = url.pathname;
-      const fileName = pathName.split('/').pop();
-
-      // 确保文件名不为空
-      if (fileName && fileName.trim() !== '') {
-        return fileName;
+          if (filenameMatch && filenameMatch[1]) {
+            let filename = filenameMatch[1];
+            // 统一处理 URL 编码和引号
+            try {
+              filename = decodeURIComponent(filename).replace(/['"]/g, '');
+              return filename;
+            } catch (decodeError) {
+              // 解码失败，回退到未解码的名称 (但仍去除引号)
+              return filename.replace(/['"]/g, '');
+            }
+          }
+        }
+      } catch (fetchError) {
+        console.warn('请求获取content-disposition时出错:', fetchError);
       }
     }
   } catch (error) {
@@ -171,7 +186,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
       url = info.srcUrl;
       break;
   }
-  
+
   // 添加判断获取真实下载url
   if (url) {
     getRealDownloadUrl(url, tab.id).then(realUrl => {
@@ -188,13 +203,14 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 
 // 发送URL到Aria2
-function sendToAria2(url, filename = '', cookie = '') {
+function sendToAria2(url, filename = '', cookie = '', inputOptions = {}) {
   const rpcUrl = `${aria2Config.secure ? 'https' : 'http'}://${aria2Config.host}:${aria2Config.port}${aria2Config.path}`;
 
   // 创建下载选项
   const options = {
     out: filename,
     header: [`Referer: ${new URL(url).origin}`, `Cookie: ${cookie}`], // 添加引用页信息，解决一些网站的防盗链问题
+    ...inputOptions
   };
 
   // 准备参数
@@ -202,7 +218,7 @@ function sendToAria2(url, filename = '', cookie = '') {
   if (aria2Config.secret) {
     params.unshift(`token:${aria2Config.secret}`);
   }
-
+  console.log('Sending to Aria2:', params);
   fetch(rpcUrl, {
     method: 'POST',
     headers: {
@@ -218,6 +234,18 @@ function sendToAria2(url, filename = '', cookie = '') {
     .then(response => response.json())
     .then(data => {
       console.log('Aria2 response:', data);
+      // 检查响应中是否包含错误
+      if (data.error) {
+        console.error('Aria2 returned an error:', data.error);
+        // 通知用户发生错误
+        chrome.notifications.create({
+          type: 'basic',
+          iconUrl: 'icons/icon128.png',
+          title: '添加下载失败',
+          message: `错误: ${data.error.message || '未知错误'}`
+        });
+        return;
+      }
       // 通知用户下载已添加
       chrome.notifications.create({
         type: 'basic',
@@ -241,9 +269,30 @@ function sendToAria2(url, filename = '', cookie = '') {
 
 // 监听来自弹出窗口的消息
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log("收到来自弹出窗口的消息:", message);
   if (message.action === 'addDownload') {
-    sendToAria2(message.url, message.filename);
-    sendResponse({ success: true });
+    const originUrl = message.url;
+    const url = new URL(message.url);
+    chrome.cookies.getAll({ url: url.origin }, (cookies) => {
+      if (chrome.runtime.lastError) {
+        console.error("Error fetching cookies:", chrome.runtime.lastError);
+        sendResponse({ success: false, error: chrome.runtime.lastError });
+        return;
+      }
+      console.log(`Origin Cookies for ${url.origin}:`, cookies);
+      // 将cookie整合成一个字符串，使用'; '作为分隔符  有的网站下载需要cookies  要不会下载报错
+      const cookieString = cookies.map(cookie => `${cookie.name}=${cookie.value}`).join(';');
+      console.log(`Str Cookies for ${url.origin}:`, cookieString);
+      const options = {
+        priority: message.options.priority,
+        'max-connection-per-server': message.options.maxConnectionPerServer,
+      }
+      getFileName({ finalUrl: originUrl }).then(fileName => {
+        console.log("文件名：", fileName);
+        sendToAria2(originUrl, fileName, cookieString, options);
+        sendResponse({ success: true });
+      });
+    });
   } else if (message.action === 'getConfig') {
     sendResponse(aria2Config);
   } else if (message.action === 'saveConfig') {
