@@ -16,12 +16,6 @@ let currentDownloadItems = {};
 document.addEventListener('DOMContentLoaded', () => {
   // 创建模板
   createDownloadItemTemplate();
-  // 调整主内容区域的大小和样式
-  const mainContent = document.getElementById('mainContent');
-  if (mainContent) {
-    // 设置更合适的高度和padding
-    mainContent.className = "flex-1 overflow-y-auto hide-scrollbar p-2 bg-white";
-  }
 
   // 初始化下载列表
   renderDownloads();
@@ -760,7 +754,7 @@ function updateDownloadListUI(downloadItems) {
   }
 
   // 设置容器样式
-  container.className = 'space-y-2';
+  container.className = 'space-y-3';
 
   // 处理空列表情况
   if (!downloadItems || downloadItems.length === 0) {
