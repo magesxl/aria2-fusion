@@ -816,7 +816,6 @@ function updateSingleDownloadItem(existingElement, item, templateHTML) {
   const currentItem = currentDownloadItems[gid];
 
   if (needsUpdate(currentItem, item)) {
-    console.log('需要更新的项目:', item.gid);
     // // 创建新元素
     const newElement = createDownloadItemElement(item, templateHTML);
     // 替换现有元素
@@ -854,7 +853,6 @@ function updateSingleDownloadItem(existingElement, item, templateHTML) {
         newElement.style.backgroundColor = '';
       }, 800);
     }
-    console.log('项目已更新:', existingElement);
   }
 }
 
