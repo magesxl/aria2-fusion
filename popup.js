@@ -214,10 +214,10 @@ function repositionSpeedTooltip() {
   if (tooltip) {
     // 移除原来的定位类
     tooltip.classList.remove('top-full', 'left-1/2', 'transform', '-translate-x-1/2', 'mt-1');
-    
+
     // 添加右上角定位类
     tooltip.classList.add('top-0', 'right-0', 'transform', 'translate-y-[-120%]', 'mr-0');
-    
+
     // 修改其他样式使其更合适右上角显示
     tooltip.style.borderRadius = '4px';
     tooltip.style.padding = '3px 6px';
@@ -232,18 +232,18 @@ function handleChartClick(event) {
   const rect = canvas.getBoundingClientRect();
   const x = event.clientX - rect.left;
   const canvasWidth = rect.width;
-  
+
   // 根据点击位置计算数据索引
   const clickedIndex = Math.round((x / canvasWidth) * (speedHistory.length - 1));
-  
+
   // 确保索引在有效范围内
   if (clickedIndex >= 0 && clickedIndex < speedHistory.length) {
     const clickedSpeed = speedHistory[clickedIndex];
     const formattedSpeed = formatBytes(clickedSpeed) + '/s';
-    
+
     // 显示点击提示
     showClickTooltip(event.clientX, event.clientY, formattedSpeed, clickedSpeed > 0);
-    
+
     // 高亮显示被点击的点
     highlightDataPoint(clickedIndex);
   }
@@ -255,16 +255,16 @@ function showClickTooltip(x, y, text, isActive) {
   if (clickTooltip) {
     document.body.removeChild(clickTooltip);
   }
-  
+
   // 创建提示元素
   clickTooltip = document.createElement('div');
   clickTooltip.className = 'click-tooltip';
   clickTooltip.textContent = text;
-  
+
   // 设置位置在鼠标右上方
   clickTooltip.style.left = (x + 10) + 'px';
   clickTooltip.style.top = (y - 30) + 'px';
-  
+
   // 根据是否有下载设置颜色
   if (isActive) {
     clickTooltip.style.borderColor = 'rgba(59, 130, 246, 0.5)';
@@ -272,16 +272,16 @@ function showClickTooltip(x, y, text, isActive) {
     clickTooltip.style.borderColor = 'rgba(107, 114, 128, 0.5)';
     clickTooltip.style.color = 'rgba(255, 255, 255, 0.7)';
   }
-  
+
   // 添加到文档
   document.body.appendChild(clickTooltip);
-  
+
   // 2秒后自动移除提示
   setTimeout(() => {
     if (clickTooltip) {
       clickTooltip.style.opacity = '0';
       clickTooltip.style.transition = 'opacity 0.3s ease-out';
-      
+
       setTimeout(() => {
         if (clickTooltip && clickTooltip.parentNode) {
           document.body.removeChild(clickTooltip);
@@ -296,23 +296,23 @@ function showClickTooltip(x, y, text, isActive) {
 function highlightDataPoint(index) {
   // 创建临时点半径数组
   const pointRadiusArray = Array(speedHistory.length).fill(0);
-  
+
   // 设置点击的点和最后一个点为可见
   pointRadiusArray[index] = 5; // 点击的点稍大
   if (index !== speedHistory.length - 1) {
     pointRadiusArray[speedHistory.length - 1] = 3; // 最后点保持可见
   }
-  
+
   // 更新图表
   heartbeatChart.data.datasets[0].pointRadius = pointRadiusArray;
-  
+
   // 设置点击点的特殊颜色
   const pointBackgroundColors = Array(speedHistory.length).fill('#3B82F6');
   pointBackgroundColors[index] = '#F59E0B'; // 黄色高亮点击的点
   heartbeatChart.data.datasets[0].pointBackgroundColor = pointBackgroundColors;
-  
+
   heartbeatChart.update();
-  
+
   // 1.5秒后恢复
   setTimeout(() => {
     const normalPointRadiusArray = Array(speedHistory.length).fill(0);
@@ -368,7 +368,7 @@ function updateDownloadSpeed() {
 function updateHeartbeatChart(currentSpeed, isError = false) {
   // 检查是否应该切换到线图模式
   const shouldShowLine = speedHistory.length > 1;
-  
+
   if (speedHistory.length > 0) {
     // 计算更贴近数据实际范围的Y轴
     const minSpeed = Math.min(...speedHistory);
@@ -385,7 +385,7 @@ function updateHeartbeatChart(currentSpeed, isError = false) {
     // 更新数据
     heartbeatChart.data.labels = Array(speedHistory.length).fill('');
     heartbeatChart.data.datasets[0].data = speedHistory;
-    
+
     // 设置线条显示/隐藏状态
     heartbeatChart.data.datasets[0].showLine = shouldShowLine;
 
@@ -394,7 +394,7 @@ function updateHeartbeatChart(currentSpeed, isError = false) {
       // 错误状态 - 使用红色
       heartbeatChart.data.datasets[0].borderColor = '#EF4444';
       heartbeatChart.data.datasets[0].pointBackgroundColor = '#EF4444';
-      
+
       const ctx = document.getElementById('downloadHeartbeat').getContext('2d');
       const errorGradient = ctx.createLinearGradient(0, 0, 0, 24);
       errorGradient.addColorStop(0, 'rgba(239, 68, 68, 0.6)');
@@ -405,7 +405,7 @@ function updateHeartbeatChart(currentSpeed, isError = false) {
       // 无下载状态 - 使用灰色
       heartbeatChart.data.datasets[0].borderColor = '#6B7280';
       heartbeatChart.data.datasets[0].pointBackgroundColor = '#6B7280';
-      
+
       const ctx = document.getElementById('downloadHeartbeat').getContext('2d');
       const grayGradient = ctx.createLinearGradient(0, 0, 0, 24);
       grayGradient.addColorStop(0, 'rgba(107, 114, 128, 0.5)');
@@ -416,7 +416,7 @@ function updateHeartbeatChart(currentSpeed, isError = false) {
       // 正常下载状态 - 使用蓝色
       heartbeatChart.data.datasets[0].borderColor = '#3B82F6';
       heartbeatChart.data.datasets[0].pointBackgroundColor = '#3B82F6';
-      
+
       const ctx = document.getElementById('downloadHeartbeat').getContext('2d');
       const blueGradient = ctx.createLinearGradient(0, 0, 0, 24);
       blueGradient.addColorStop(0, 'rgba(59, 130, 246, 0.6)');
@@ -468,7 +468,7 @@ function updateHeartbeatChart(currentSpeed, isError = false) {
       speedElement.className = 'text-blue-500 font-bold';
     }
   }
-  
+
   // 确保tooltip始终可见，无需hover
   const tooltip = document.getElementById('speedTooltip');
   if (tooltip) {
@@ -1678,7 +1678,23 @@ function resumeDownload(gid) {
 
 // 删除下载
 function removeDownload(gid) {
-  sendAria2Request('aria2.removeDownloadResult', [gid])
+  getAria2Task(gid)
+    .then(task => {
+      if (task.status === 'active') {
+        //活动中任务 强制删除后状态为removed  需要再调用删除结果
+        forceRemoveActiveDownload(gid);
+      } else if (task.status === 'waiting' || task.status === 'paused') {
+        forceRemoveDownload(gid);
+      } else {
+        removeDownloadResult(gid);
+      }
+    })
+    .then(() => renderDownloads())
+    .catch(error => console.error('删除下载任务出错:', error));
+}
+
+function aria2RemoveDownload(gid) {
+  sendAria2Request('aria2.remove', [gid])
     .then(() => renderDownloads())
     .catch(error => console.error('删除下载时出错:', error));
 }
@@ -1688,9 +1704,20 @@ function forceRemoveDownload(gid) {
     .then(() => renderDownloads())
     .catch(error => console.error('删除下载时出错:', error));
 }
-
-function purgeDownloadResult(gid) {
-  sendAria2Request('aria2.purgeDownloadResult', [gid])
+// 删除下载
+function forceRemoveActiveDownload(gid) {
+  sendAria2Request('aria2.forceRemove', [gid])
+    .then(() => removeDownloadResult(gid))
+    .then(() => renderDownloads())
+    .catch(error => console.error('删除下载时出错:', error));
+}
+function removeDownloadResult(gid) {
+  sendAria2Request('aria2.removeDownloadResult', [gid])
+    .then(() => renderDownloads())
+    .catch(error => console.error('删除下载结果时出错:', error));
+}
+function purgeDownloadResult() {
+  sendAria2Request('aria2.purgeDownloadResult', [])
     .then(() => renderDownloads())
     .catch(error => console.error('清空下载结果出错:', error));
 }
@@ -1707,7 +1734,7 @@ function retryDownload(gid) {
         const dir = task.dir;
 
         // 先删除旧任务
-        return forceRemoveDownload(gid)
+        return removeDownloadResult(gid)
           .then(() => {
             // 添加新任务
             return addDownloadTask(url, dir);
