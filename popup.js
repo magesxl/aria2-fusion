@@ -506,7 +506,10 @@ function setupEventListeners() {
     document.getElementById('settingsContent').classList.add('hidden');
     document.getElementById('mainContent').classList.remove('hidden');
   });
-
+  document.getElementById('setBackToMain').addEventListener('click', () => {
+    document.getElementById('settingsContent').classList.add('hidden');
+    document.getElementById('mainContent').classList.remove('hidden');
+  });
   // 清空任务按钮
   document.getElementById('clearTasksBtn').addEventListener('click', clearAllTasks);
 
