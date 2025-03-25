@@ -20,9 +20,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // 加载设置
   loadSettings();
 
-  // 设置事件监听器
-  setupEventListeners();
-
   // 初始化与Aria2的连接
   initAria2Connection();
 
