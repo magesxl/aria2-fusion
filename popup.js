@@ -14,9 +14,6 @@ let currentDownloadItems = {};
 
 // DOM加载完成后初始化
 document.addEventListener('DOMContentLoaded', () => {
-  // 创建模板
-  createDownloadItemTemplate();
-
   // 初始化下载列表
   renderDownloads();
 
