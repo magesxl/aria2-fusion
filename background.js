@@ -227,54 +227,103 @@ async function getRealDownloadUrl(url) {
 async function getFileName(item) {
   // 如果已有文件名，从路径中提取
   if (item.filename) {
-    return item.filename.split(/[\\/]/).pop();
+    return extractFilenameFromPath(item.filename);
   }
-
-  try {
-    // 尝试从URL中获取文件名
-    if (item.finalUrl) {
-      // 如果URL解析无法获取文件名，尝试发送请求获取content-disposition
-      try {
-        const response = await fetch(item.finalUrl, {
-          method: 'HEAD',
-          credentials: 'include' // 包含cookies以处理需要认证的资源
-        });
-        if (!response.ok) {  // 检查响应状态
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        console.log("response:", response);
-        // 从响应头中获取content-disposition
-        const contentDisposition = response.headers.get('content-disposition');
-        console.log("contentDisposition:", contentDisposition);
-        if (contentDisposition) {
-          // 2.2 从 Content-Disposition 解析文件名 (更简洁的正则表达式)
-          const filenameMatch = contentDisposition.match(
-            /filename\*?=(?:UTF-8''|'|")?([^;'"\n]*)/i
-          );
-
-          if (filenameMatch && filenameMatch[1]) {
-            let filename = filenameMatch[1];
-            // 统一处理 URL 编码和引号
-            try {
-              filename = decodeURIComponent(filename).replace(/['"]/g, '');
-              return filename;
-            } catch (decodeError) {
-              // 解码失败，回退到未解码的名称 (但仍去除引号)
-              return filename.replace(/['"]/g, '');
-            }
-          }
-        }
-      } catch (fetchError) {
-        console.warn('请求获取content-disposition时出错:', fetchError);
-      }
+  // 尝试从URL中获取文件名
+  if (item.finalUrl) {
+    // 从URL路径中提取文件名
+    const filenameFromUrl = extractFilenameFromUrl(item.finalUrl);
+    if (filenameFromUrl) {
+      return filenameFromUrl;
     }
-  } catch (error) {
-    console.warn('从URL提取文件名时出错:', error);
+    // 如果URL路径中没有文件名，尝试从响应头中获取
+    try {
+      const filenameFromHeaders = await getFilenameFromHeaders(item.finalUrl);
+      if (filenameFromHeaders) {
+        return filenameFromHeaders;
+      }
+    } catch (error) {
+      console.warn('从URL提取文件名时出错:', error);
+    }
   }
-
   // 回退选项
   return item.title || '未知文件';
 }
+
+/**
+ * 从路径中提取文件名
+ * @param {string} path - 文件路径
+ * @returns {string} - 返回文件名
+ */
+function extractFilenameFromPath(path) {
+  return path.split(/[\\/]/).pop();
+}
+
+
+/**
+ * 从URL路径中提取文件名
+ * @param {string} url - 文件URL
+ * @returns {string} - 返回文件名
+ */
+function extractFilenameFromUrl(url) {
+  try {
+    const pathname = new URL(url).pathname; // 获取URL的路径部分
+    return pathname.split('/').pop(); // 从路径中提取文件名
+  } catch (error) {
+    console.warn('从URL路径提取文件名时出错:', error);
+    return null;
+  }
+}
+
+/**
+ * 从HTTP响应头中提取文件名
+ * @param {string} url - 文件URL
+ * @returns {Promise<string>} - 返回文件名
+ */
+async function getFilenameFromHeaders(url) {
+  try {
+    const response = await fetch(url, {
+      method: 'HEAD',
+      credentials: 'include' // 包含cookies以处理需要认证的资源
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    // 从响应头中获取content-disposition
+    const contentDisposition = response.headers.get('content-disposition');
+    if (contentDisposition) {
+      return parseFilenameFromContentDisposition(contentDisposition);
+    }
+  } catch (error) {
+    console.warn('请求获取content-disposition时出错:', error);
+    throw error;
+  }
+  return null;
+}
+/**
+ * 从Content-Disposition头中解析文件名
+ * @param {string} contentDisposition - Content-Disposition头
+ * @returns {string} - 返回文件名
+ */
+function parseFilenameFromContentDisposition(contentDisposition) {
+  const filenameMatch = contentDisposition.match(
+    /filename\*?=(?:UTF-8''|'|")?([^;'"\n]*)/i
+  );
+  if (filenameMatch && filenameMatch[1]) {
+    let filename = filenameMatch[1];
+    try {
+      filename = decodeURIComponent(filename).replace(/['"]/g, '');
+    } catch (decodeError) {
+      // 解码失败，回退到未解码的名称 (但仍去除引号)
+      filename = filename.replace(/['"]/g, '');
+    }
+    return filename;
+  }
+  return null;
+}
+
+
+
 // 发送URL到Aria2
 function sendToAria2(url, filename = '', cookie = '', inputOptions = {}) {
   const rpcUrl = `${aria2Config.secure ? 'https' : 'http'}://${aria2Config.host}:${aria2Config.port}${aria2Config.path}`;
@@ -311,31 +360,35 @@ function sendToAria2(url, filename = '', cookie = '', inputOptions = {}) {
       if (data.error) {
         console.error('Aria2 returned an error:', data.error);
         // 通知用户发生错误
-        chrome.notifications.create({
-          type: 'basic',
-          iconUrl: 'icons/icon128.png',
-          title: '添加下载失败',
-          message: `错误: ${data.error.message || '未知错误'}`
-        });
+        showNotification('添加下载失败', `错误: ${data.error.message || '未知错误'}`);
         return;
       }
       // 通知用户下载已添加
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: 'icons/icon128.png',
-        title: '下载已添加',
-        message: `${filename || url} 已发送到Aria2下载器`
-      });
+      showNotification('下载已添加', `${filename || url} 已发送到Aria2下载器`);
     })
     .catch(error => {
       console.error('Error sending to Aria2:', error);
-
       // 通知用户发生错误
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: 'icons/icon128.png',
-        title: '发送失败',
-        message: '无法连接到Aria2，请检查设置'
-      });
+      showNotification('发送失败', '无法连接到Aria2，请检查设置');
     });
+}
+
+/**
+ * 显示通知并在 3 秒后自动关闭
+ * @param {string} title - 通知标题
+ * @param {string} message - 通知内容
+ */
+function showNotification(title, message) {
+  chrome.notifications.create({
+    type: 'basic',
+    iconUrl: 'icons/icon128.png',
+    title: title,
+    message: message,
+    requireInteraction: false // 允许通知自动关闭
+  }, (notificationId) => {
+    // 3 秒后关闭通知
+    setTimeout(() => {
+      chrome.notifications.clear(notificationId);
+    }, 3000);
+  });
 }
