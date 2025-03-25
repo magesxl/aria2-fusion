@@ -231,11 +231,6 @@ async function getFileName(item) {
   }
   // 尝试从URL中获取文件名
   if (item.finalUrl) {
-    // 从URL路径中提取文件名
-    const filenameFromUrl = extractFilenameFromUrl(item.finalUrl);
-    if (filenameFromUrl) {
-      return filenameFromUrl;
-    }
     // 如果URL路径中没有文件名，尝试从响应头中获取
     try {
       const filenameFromHeaders = await getFilenameFromHeaders(item.finalUrl);
@@ -244,6 +239,11 @@ async function getFileName(item) {
       }
     } catch (error) {
       console.warn('从URL提取文件名时出错:', error);
+    }
+    // 从URL路径中提取文件名
+    const filenameFromUrl = extractFilenameFromUrl(item.finalUrl);
+    if (filenameFromUrl) {
+      return filenameFromUrl;
     }
   }
   // 回退选项
@@ -267,8 +267,16 @@ function extractFilenameFromPath(path) {
  */
 function extractFilenameFromUrl(url) {
   try {
-    const pathname = new URL(url).pathname; // 获取URL的路径部分
-    return pathname.split('/').pop(); // 从路径中提取文件名
+    const newUrl = new URL(url);
+    console.log("newUrl:", newUrl);
+    // 检查是否有 response-content-disposition 参数
+    const disposition = newUrl.searchParams.get('response-content-disposition');
+    if (disposition) {
+      // 从 response-content-disposition 中提取文件名
+      parseFilenameFromContentDisposition(disposition);
+    }
+    // 如果没有 response-content-disposition，从 pathname 中提取文件名
+    return newUrl.pathname.split('/').pop();
   } catch (error) {
     console.warn('从URL路径提取文件名时出错:', error);
     return null;
@@ -290,6 +298,7 @@ async function getFilenameFromHeaders(url) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     // 从响应头中获取content-disposition
+    console.log("response-name:", response);
     const contentDisposition = response.headers.get('content-disposition');
     if (contentDisposition) {
       return parseFilenameFromContentDisposition(contentDisposition);
