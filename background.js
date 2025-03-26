@@ -341,54 +341,56 @@ function sendToAria2(url, filename = '', cookie = '', referrer = '', inputOption
   const rpcUrl = `${aria2Config.secure ? 'https' : 'http'}://${aria2Config.host}:${aria2Config.port}${aria2Config.path}`;
   referrer = referrer || new URL(url).origin;
   const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
-  // 创建下载选项
+
+  // 创建下载选项 (初始选项)
   const options = {
     out: filename,
     header: [`Referer: ${referrer}`, `Cookie: ${cookie}`, `User-Agent: ${userAgent}`], // 添加引用页信息，解决一些网站的防盗链问题
     ...inputOptions
   };
-  // 如果不支持分片，则设置 split 为 1；否则，不设置 split 选项
-  isRangeRequestSupported(url).then(supported => {
-    if (supported) {
-    } else {
-      options.split = '1';
+
+  advancedRangeCheck(url).then(supported => {
+    if (!supported) {
+      // 服务器不支持分片下载，禁用多线程下载
+      options['max-connection-per-server'] = '1';
+      options['split'] = '1';
     }
-  });
-  // 准备参数
-  let params = [[url], options];
-  if (aria2Config.secret) {
-    params.unshift(`token:${aria2Config.secret}`);
-  }
-  console.log('Sending to Aria2:', params);
-  fetch(rpcUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: Date.now().toString(),
-      method: 'aria2.addUri',
-      params: params
-    })
+
+    // 准备参数
+    let params = [[url], options];
+    if (aria2Config.secret) {
+      params.unshift(`token:${aria2Config.secret}`);
+    }
+
+    console.log('Sending to Aria2:', params);
+
+    // 发送请求
+    return fetch(rpcUrl, {  // 注意这里的 return
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: Date.now().toString(),
+        method: 'aria2.addUri',
+        params: params
+      })
+    });
   })
-    .then(response => response.json())
+    .then(response => response.json()) // 链式调用 .then
     .then(data => {
       console.log('Aria2 response:', data);
-      // 检查响应中是否包含错误
       if (data.error) {
         console.error('Aria2 returned an error:', data.error);
-        // 通知用户发生错误
         showNotification('添加下载失败', `错误: ${data.error.message || '未知错误'}`);
         return;
       }
-      // 通知用户下载已添加
       showNotification('下载已添加', `${filename || url} 已发送到Aria2下载器`);
     })
     .catch(error => {
-      console.error('Error sending to Aria2:', error);
-      // 通知用户发生错误
-      showNotification('发送失败', '无法连接到Aria2，请检查设置');
+      console.error('Error sending to Aria2 or during range check:', error);
+      showNotification('发送失败', '无法连接到Aria2或检查Range支持时出错，请检查设置');
     });
 }
 
@@ -440,7 +442,60 @@ async function isRangeRequestSupported(url) {
   }
 }
 
+async function advancedRangeCheck(url) {
+  try {
+    // 1. 获取文件大小 (通过 HEAD 请求)
+    const headResponse = await fetch(url, {
+      method: 'HEAD',
+      credentials: 'include' // 包含cookies以处理需要认证的资源
+    });
+    console.log('判断head响应头信息:', headResponse);
+    console.log('支持head advance Range响应头信息:');
+    headResponse.headers.forEach((value, name) => {
+      console.log(`${name}: ${value}`);
+    });
+    if (!headResponse.ok || headResponse.headers.get('Accept-Ranges') !== 'bytes') {
+      return false;
+    }
+    const fileSize = parseInt(headResponse.headers.get('Content-Length'), 10);
+    if (isNaN(fileSize)) {
+      return false; // 无法获取文件大小，无法进行后续验证
+    }
 
+    // 2. 发送多个不同范围的 Range 请求
+    const ranges = [
+      'bytes=0-99',          // 开头
+      `bytes=${Math.floor(fileSize / 2)}-${Math.floor(fileSize / 2) + 99}`, // 中间
+      `bytes=${fileSize - 100}-${fileSize - 1}`  // 结尾
+    ];
+
+    for (const range of ranges) {
+      const rangeResponse = await fetch(url, {
+        method: 'GET',
+        headers: { 'Range': range }
+      });
+      console.log('判断名称响应头信息:', rangeResponse);
+      console.log('支持advance Range响应头信息:');
+      rangeResponse.headers.forEach((value, name) => {
+        console.log(`${name}: ${value}`);
+      });
+      if (!rangeResponse.ok || rangeResponse.status !== 206) {
+        return false; // 任何一个 Range 请求失败，则认为不支持
+      }
+
+      const contentRange = rangeResponse.headers.get('Content-Range');
+      const expectedStart = parseInt(range.substring(range.indexOf('=') + 1, range.indexOf('-')));
+      if (!contentRange || !contentRange.startsWith(`bytes ${expectedStart}-`)) { // 检查Content-Range开头
+        return false;
+      }
+    }
+
+    return true; // 所有 Range 请求都成功，确认支持
+  } catch (error) {
+    console.error('Error checking for Range support:', error);
+    return false;
+  }
+}
 /**
  * 显示通知并在 3 秒后自动关闭
  * @param {string} title - 通知标题

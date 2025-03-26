@@ -60,5 +60,14 @@ aria2-fusion/
 
 ## aria2 问题
 -  如果网站不支持Rang下载，aria2下载的文件会有问题，需要设置split参数为1
-   部分网站Rang响应有问题 响应支持Rang下载 但实际不支持 会导致下载问题有问题
+   部分网站Rang响应有问题 响应支持Rang下载 但实际不支持 会导致下载文件有问题
+   --max-connection-per-server 用于设置从 单个服务器 下载时，aria2 可以建立的最大并发连接数
+   默认情况下，aria2 的 --max-connection-per-server 值为 1，即每个服务器只使用一个连接。
+-  判断支持支持Rang下载
+   HEAD 请求用于初步检查服务器是否 声称 支持 Range 请求（通过 Accept-Ranges 头）。
+   GET 请求（带有 Range 头）用于实际验证服务器是否能正确处理 Range 请求。 这是更可靠的判断方法。验证时, 先HEAD请求, 再GET请求.
+   只有通过实际的 GET Range 请求，我们才能确保服务器真正支持 Range 请求，而不仅仅是表面上支持。
+   max-connection-per-server：控制每个服务器的最大连接数。
+   split：控制文件分块下载的最大数量。
+   如果服务器不支持分片下载，必须将这两个参数设置为 1，否则会导致下载文件有问题 。 
 -  aria2下载文件需要传输Cookie
