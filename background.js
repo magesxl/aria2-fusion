@@ -71,7 +71,7 @@ chrome.downloads.onCreated.addListener((downloadItem) => {
               }
               console.log("从下载列表移除成功：", downloadItem.id);
               getFileName(item).then(fileName => {
-                sendToAria2(downloadItem.finalUrl, fileName, cookieString);
+                sendToAria2(downloadItem.finalUrl, fileName, cookieString, downloadItem.referrer);
               })
             });
 
@@ -169,7 +169,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       getFileName({ finalUrl: originUrl }).then(fileName => {
         console.log("文件名：", fileName);
-        sendToAria2(originUrl, fileName, cookieString, options);
+        sendToAria2(originUrl, fileName, cookieString, '', options);
         sendResponse({ success: true });
       });
     });
@@ -298,7 +298,10 @@ async function getFilenameFromHeaders(url) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     // 从响应头中获取content-disposition
-    console.log("response-name:", response);
+    console.log('判断名称响应头信息:');
+    response.headers.forEach((value, name) => {
+      console.log(`${name}: ${value}`);
+    });
     const contentDisposition = response.headers.get('content-disposition');
     if (contentDisposition) {
       return parseFilenameFromContentDisposition(contentDisposition);
@@ -334,16 +337,23 @@ function parseFilenameFromContentDisposition(contentDisposition) {
 
 
 // 发送URL到Aria2
-function sendToAria2(url, filename = '', cookie = '', inputOptions = {}) {
+function sendToAria2(url, filename = '', cookie = '', referrer = '', inputOptions = {}) {
   const rpcUrl = `${aria2Config.secure ? 'https' : 'http'}://${aria2Config.host}:${aria2Config.port}${aria2Config.path}`;
-
+  referrer = referrer || new URL(url).origin;
+  const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
   // 创建下载选项
   const options = {
     out: filename,
-    header: [`Referer: ${new URL(url).origin}`, `Cookie: ${cookie}`], // 添加引用页信息，解决一些网站的防盗链问题
+    header: [`Referer: ${referrer}`, `Cookie: ${cookie}`, `User-Agent: ${userAgent}`], // 添加引用页信息，解决一些网站的防盗链问题
     ...inputOptions
   };
-
+  // 如果不支持分片，则设置 split 为 1；否则，不设置 split 选项
+  isRangeRequestSupported(url).then(supported => {
+    if (supported) {
+    } else {
+      options.split = '1';
+    }
+  });
   // 准备参数
   let params = [[url], options];
   if (aria2Config.secret) {
@@ -381,6 +391,55 @@ function sendToAria2(url, filename = '', cookie = '', inputOptions = {}) {
       showNotification('发送失败', '无法连接到Aria2，请检查设置');
     });
 }
+
+/**
+ * 判断链接是否支持分片下载
+ * @param {string} url 文件链接
+ * @returns {Promise<boolean>} 是否支持分片下载
+ */
+async function isRangeRequestSupported(url) {
+  try {
+    const response = await fetch(url, {
+      method: 'HEAD',
+      headers: {
+        'Range': 'bytes=0-0' // 请求一个字节
+      }
+    });
+    console.log('判断名称响应头信息:', response);
+    console.log('支持Range响应头信息:');
+    response.headers.forEach((value, name) => {
+      console.log(`${name}: ${value}`);
+    });
+    if (response.status === 206) {
+      // 1. 优先检查 Accept-Ranges
+      const acceptRanges = response.headers.get('Accept-Ranges');
+      if (acceptRanges === 'bytes') {
+        return true; // 有 Accept-Ranges: bytes，明确支持
+      }
+
+      // 2. 如果没有 Accept-Ranges，再检查 Content-Range
+      const contentRange = response.headers.get('Content-Range');
+      if (contentRange && contentRange.startsWith('bytes')) {
+        return true; // 没有 Accept-Ranges，但有有效的 Content-Range，也认为支持
+      }
+
+      return false; // 206 状态码，但既没有 Accept-Ranges: bytes，也没有有效的 Content-Range
+    } else if (response.status === 200) {
+      if (response.headers.get('Content-Range')) {
+        return true;
+      }
+      return false;
+    }
+    else {
+      return false; // 其他状态码，不支持
+    }
+  } catch (error) {
+    console.error("Error checking range request support:", error);
+    // 发生错误，可能是不支持，也可能是网络问题，根据需要处理
+    return false;
+  }
+}
+
 
 /**
  * 显示通知并在 3 秒后自动关闭
