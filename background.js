@@ -83,11 +83,14 @@ chrome.downloads.onCreated.addListener((downloadItem) => {
     });
   }
 });
-
+chrome.runtime.onStartup.addListener(() => {
+  initAndUpdateBadge()
+});
 
 // 监听浏览器右键菜单
 chrome.runtime.onInstalled.addListener(() => {
   console.log("插件已安装，正在创建右键菜单...");
+  initAndUpdateBadge();
   chrome.contextMenus.create({
     id: "aria2-download-link",
     title: "使用Aria2下载链接",
@@ -386,6 +389,7 @@ function sendToAria2(url, filename = '', cookie = '', referrer = '', inputOption
         showNotification('添加下载失败', `错误: ${data.error.message || '未知错误'}`);
         return;
       }
+      initAndUpdateBadge();
       showNotification('下载已添加', `${filename || url} 已发送到Aria2下载器`);
     })
     .catch(error => {
@@ -514,4 +518,200 @@ function showNotification(title, message) {
       chrome.notifications.clear(notificationId);
     }, 3000);
   });
+}
+
+function initAndUpdateBadge() {
+  // 构建aria2.getGlobalStats请求
+  sendAria2BackgroundRequest("aria2.getGlobalStat", [])
+    .then(task => {
+      const num = parseInt(task.numActive) + parseInt(task.numWaiting);
+      // 设置初始图标
+      chrome.action.setBadgeText({ text: num.toString() });
+      // 设置徽章背景色为灰色
+      chrome.action.setBadgeBackgroundColor({ color: '#E0E0E0' });
+    }).catch(error => {
+      console.error('Error fetching aria2 stats:', error);
+      // 设置初始图标
+      chrome.action.setBadgeText({ text: '0' });
+      // 设置徽章背景色为灰色
+      chrome.action.setBadgeBackgroundColor({ color: '#E0E0E0' });
+    });
+}
+
+function sendAria2BackgroundRequest(method, params = []) {
+  // 发送HTTP请求给Aria2服务器
+  return new Promise((resolve, reject) => {
+    // 构建HTTP URL
+    const rpcUrl = `${aria2Config.secure ? 'https' : 'http'}://${aria2Config.host}:${aria2Config.port}${aria2Config.path}`;
+    // 添加密钥参数
+    if (aria2Config.secret) {
+      params.unshift(`token:${aria2Config.secret}`);
+    }
+
+    // 构建请求体
+    const requestId = Date.now().toString();
+    const requestBody = {
+      jsonrpc: '2.0',
+      method: method,
+      id: requestId,
+      params: params
+    };
+
+    // 发送HTTP POST请求
+    fetch(rpcUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP错误，状态码: ${response.status}`);
+        }
+        return response.json();
+      })
+      .then(data => {
+        if (data.result !== undefined) {
+          resolve(data.result);
+        } else if (data.error) {
+          reject(new Error(data.error.message));
+        } else {
+          reject(new Error('未知响应格式'));
+        }
+      })
+      .catch(error => {
+        console.error('Aria2请求错误:', error);
+        reject(error);
+      });
+  });
+}
+
+
+// Aria2 WebSocket 连接管理
+let ws;
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 10;
+const BASE_RECONNECT_DELAY = 2000;
+let connectionCheckInterval;
+let isExtensionActive = true;
+
+function connectWebSocket() {
+  // 如果插件已关闭或已有连接且连接状态正常，则不连接
+  if (!isExtensionActive || (ws && ws.readyState === WebSocket.OPEN)) return;
+
+  // 创建新的WebSocket连接
+  ws = new WebSocket('ws://localhost:6800/jsonrpc');
+
+  ws.onopen = () => {
+    console.log('WebSocket 连接已建立');
+    reconnectAttempts = 0; // 重置重连计数
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      console.log('收到状态变化通知:', data);
+
+      // 处理不同类型的通知
+      if (data.method === 'aria2.onDownloadStart') {
+      } else if (data.method === 'aria2.onDownloadPause') {
+      } else if (data.method === 'aria2.onDownloadStop') {
+
+      } else if (data.method === 'aria2.onDownloadComplete') {
+      } else if (data.method === 'aria2.onDownloadError') {
+      } else if (data.method === 'aria2.onBtDownloadComplete') {
+
+      }
+      initAndUpdateBadge();
+      // 更新任务状态
+      // updateTaskStatus(data);
+    } catch (error) {
+      console.error('处理WebSocket消息时出错:', error);
+    }
+  };
+
+  ws.onerror = (error) => {
+    console.error('WebSocket 错误:', error);
+  };
+
+  ws.onclose = () => {
+    console.log('WebSocket 连接已关闭');
+
+    // 只有在插件活跃时才尝试重连
+    if (isExtensionActive && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+      const delay = BASE_RECONNECT_DELAY * Math.pow(1.5, reconnectAttempts);
+      console.log(`将在 ${delay}ms 后尝试重新连接 (${reconnectAttempts + 1}/${MAX_RECONNECT_ATTEMPTS})`);
+
+      setTimeout(connectWebSocket, delay);
+      reconnectAttempts++;
+    } else if (!isExtensionActive) {
+      console.log('插件已关闭，不再尝试重连');
+    } else {
+      console.error('达到最大重连次数，停止重连');
+    }
+  };
+}
+
+// 处理下载完成事件
+function handleDownloadComplete(params) {
+  console.log('下载任务完成:', params);
+}
+
+// 处理下载错误事件
+function handleDownloadError(params) {
+  console.log('下载任务出错:', params);
+}
+
+// 更新任务状态
+function updateTaskStatus(data) {
+  chrome.runtime.sendMessage({
+    action: 'taskStatusUpdate',
+    data: data
+  });
+}
+
+// 断开WebSocket连接
+function disconnectWebSocket() {
+  if (ws) {
+    console.log('主动断开WebSocket连接');
+    ws.close();
+    ws = null;
+  }
+
+  // 清除定期检查
+  if (connectionCheckInterval) {
+    clearInterval(connectionCheckInterval);
+    connectionCheckInterval = null;
+  }
+}
+
+// 初始化连接
+function initializeWebSocket() {
+  isExtensionActive = true;
+  connectWebSocket();
+
+  // 设置定期检查连接状态
+  connectionCheckInterval = setInterval(() => {
+    if (isExtensionActive && (!ws || ws.readyState !== WebSocket.OPEN)) {
+      console.log('检测到WebSocket连接不活跃，尝试重新连接');
+      connectWebSocket();
+    }
+  }, 30000); // 每30秒检查一次
+}
+
+// 插件启动时初始化WebSocket连接
+initializeWebSocket();
+
+// 监听插件状态变化
+chrome.runtime.onSuspend.addListener(() => {
+  console.log('插件即将关闭，断开WebSocket连接');
+  isExtensionActive = false;
+  disconnectWebSocket();
+});
+
+// 可以添加一个函数用于在插件其他地方调用关闭连接
+function shutdownWebSocketConnection() {
+  isExtensionActive = false;
+  disconnectWebSocket();
 }

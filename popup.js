@@ -1091,45 +1091,6 @@ function addDownloadTask(url, options) {
   // 需要刷新界面
   renderDownloads();
 }
-
-// WebSocket 连接
-let ws;
-// 连接到 Aria2 的 WebSocket
-function connectWebSocket() {
-  ws = new WebSocket('ws://localhost:6800/jsonrpc');
-  // WebSocket 连接成功
-  ws.onopen = () => {
-    console.log('WebSocket 连接已建立');
-  };
-  // 收到消息时的处理
-  ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    console.log('收到状态变化通知:', data);
-  };
-  // WebSocket 错误处理
-  ws.onerror = (error) => {
-    console.error('WebSocket 错误:', error);
-    // 尝试重新连接
-    setTimeout(connectWebSocket, 5000); // 5 秒后重试
-  };
-  // WebSocket 连接关闭
-  ws.onclose = () => {
-    console.log('WebSocket 连接已关闭');
-    // 尝试重新连接
-    setTimeout(connectWebSocket, 2000); // 5 秒后重试
-  };
-}
-
-
-// 初始化 WebSocket 连接
-connectWebSocket();
-// 监听弹出窗口关闭事件
-window.addEventListener('unload', () => {
-  if (ws) {
-    ws.close(); // 关闭 WebSocket 连接
-  }
-});
-
 // 加载设置
 function loadSettings() {
   chrome.storage.sync.get({
@@ -1399,7 +1360,6 @@ function sendAria2Request(method, params = []) {
       })
       .catch(error => {
         console.error('Aria2请求错误:', error);
-        updateConnectionIndicator(false);
         reject(error);
       });
   });
