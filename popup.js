@@ -1,10 +1,7 @@
 // 与Aria2的通信配置
 const aria2Config = {
-  host: 'localhost',
-  port: 6800,
-  secure: false,
+  rpcUrl: 'http://localhost:6800/jsonrpc',
   secret: '',
-  path: '/jsonrpc',
   enabled: true,
   fileSize: 10
 };
@@ -1094,29 +1091,20 @@ function addDownloadTask(url, options) {
 // 加载设置
 function loadSettings() {
   chrome.storage.sync.get({
-    aria2host: 'localhost',
-    aria2port: 6800,
-    aria2secure: false,
+    rpcUrl: 'http://localhost:6800/jsonrpc',
     aria2secret: '',
-    aria2path: '/jsonrpc',
     aria2enabled: true,
     aria2fileSize: 10
   }, (items) => {
     // 更新本地配置
-    aria2Config.host = items.aria2host;
-    aria2Config.port = items.aria2port;
-    aria2Config.secure = items.aria2secure;
+    aria2Config.rpcUrl = items.rpcUrl;
     aria2Config.secret = items.aria2secret;
-    aria2Config.path = items.aria2path;
     aria2Config.enabled = items.aria2enabled;
     aria2Config.fileSize = items.aria2fileSize;
 
     // 更新表单
-    document.getElementById('aria2host').value = items.aria2host;
-    document.getElementById('aria2port').value = items.aria2port;
-    document.getElementById('aria2path').value = items.aria2path;
+    document.getElementById('aria2url').value = items.rpcUrl;
     document.getElementById('aria2secret').value = items.aria2secret;
-    document.getElementById('aria2secure').checked = items.aria2secure;
     document.getElementById('aria2enabled').checked = items.aria2enabled;
     document.getElementById('aria2fileSize').value = items.aria2fileSize;
   });
@@ -1126,20 +1114,11 @@ function loadSettings() {
 // 保存设置
 function saveSettings() {
   let config = {
-    host: document.getElementById('aria2host').value,
-    port: parseInt(document.getElementById('aria2port').value),
-    path: document.getElementById('aria2path').value,
-    secure: document.getElementById('aria2secure').checked,
+    rpcUrl: document.getElementById('aria2url').value,
     secret: document.getElementById('aria2secret').value,
     enabled: document.getElementById('aria2enabled').checked,
     fileSize: parseInt(document.getElementById('aria2fileSize').value)
   };
-
-  // Check for invalid inputs
-  if (isNaN(config.port) || config.port <= 0) {
-    showStatusMessage('端口号无效', 'error');
-    return;
-  }
 
   if (isNaN(config.fileSize) || config.fileSize < 0) {
     showStatusMessage('文件大小无效', 'error');
@@ -1189,11 +1168,8 @@ function showStatusMessage(message, type) {
 // 重置设置
 function resetSettings() {
   // 默认设置
-  document.getElementById('aria2host').value = 'localhost';
-  document.getElementById('aria2port').value = '6800';
-  document.getElementById('aria2path').value = '/jsonrpc';
+  document.getElementById('aria2url').value = 'http://localhost:6800/jsonrpc';
   document.getElementById('aria2secret').value = '';
-  document.getElementById('aria2secure').checked = false;
   document.getElementById('aria2enabled').checked = true;
   document.getElementById('aria2fileSize').value = '10';
 
@@ -1231,7 +1207,7 @@ function updateConnectionIndicator() {
   const indicator = document.getElementById('connectionIndicator');
 
   // 检查连接配置
-  if (!aria2Config.host || !aria2Config.port) {
+  if (!aria2Config.rpcUrl) {
     indicator.textContent = '未配置';
     indicator.className = 'px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 border border-gray-200 flex items-center gap-1.5';
     indicator.querySelector('span').className = 'w-2 h-2 rounded-full bg-gray-500';
@@ -1265,13 +1241,8 @@ function getAria2Task(gid) {
   return sendAria2Request('aria2.tellStatus', [gid]);
 }
 function getAllAria2Tasks() {
-  const host = document.getElementById('aria2host').value || 'localhost';
-  const port = document.getElementById('aria2port').value || '6800';
-  const path = document.getElementById('aria2path').value || '/jsonrpc';
-  const secure = document.getElementById('aria2secure').checked;
   const secret = document.getElementById('aria2secret').value;
-
-  const rpcUrl = `${secure ? 'https' : 'http'}://${host}:${port}${path}`;
+  const rpcUrl = document.getElementById('aria2url').value || 'http://localhost:6800/jsonrpc';
 
   // 准备 RPC 请求
   const multicallParams = [];
@@ -1318,8 +1289,7 @@ function getAllAria2Tasks() {
 function sendAria2Request(method, params = []) {
   return new Promise((resolve, reject) => {
     // 构建HTTP URL
-    const protocol = aria2Config.secure ? 'https' : 'http';
-    const url = `${protocol}://${aria2Config.host}:${aria2Config.port}${aria2Config.path}`;
+    const url = document.getElementById('aria2url').value || 'http://localhost:6800/jsonrpc';
 
     // 添加密钥参数
     if (aria2Config.secret) {

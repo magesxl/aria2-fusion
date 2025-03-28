@@ -1,40 +1,28 @@
 // 存储Aria2配置
 let aria2Config = {
-  host: 'localhost',
-  port: 6800,
-  secure: false,
+  rpcUrl: 'http://localhost:6800/jsonrpc',
   secret: '',
-  path: '/jsonrpc',
   enabled: true,
   fileSize: 10 // 最小文件大小（MB），超过此大小的下载将被Aria2接管
 };
 
 // 加载保存的配置
 chrome.storage.sync.get({
-  aria2host: 'localhost',
-  aria2port: 6800,
-  aria2secure: false,
-  aria2secret: '',
-  aria2path: '/jsonrpc',
-  aria2enabled: true,
-  aria2fileSize: 10
+  rpcUrl: 'http://localhost:6800/jsonrpc',
+  secret: '',
+  enabled: true,
+  fileSize: 10 // 最小文件大小（MB），超过此大小的下载将被Aria2接管
 }, (config) => {
-  aria2Config.host = config.aria2host;
-  aria2Config.port = config.aria2port;
-  aria2Config.secure = config.aria2secure;
+  aria2Config.rpcUrl = config.rpcUrl;
   aria2Config.secret = config.aria2secret;
-  aria2Config.path = config.aria2path;
   aria2Config.enabled = config.aria2enabled;
   aria2Config.fileSize = config.aria2fileSize;
 });
 
 // 监听配置变更
 chrome.storage.onChanged.addListener((changes) => {
-  if (changes.aria2host) aria2Config.host = changes.aria2host.newValue;
-  if (changes.aria2port) aria2Config.port = changes.aria2port.newValue;
-  if (changes.aria2secure) aria2Config.secure = changes.aria2secure.newValue;
+  if (changes.rpcUrl) aria2Config.rpcUrl = changes.rpcUrl.newValue;
   if (changes.aria2secret) aria2Config.secret = changes.aria2secret.newValue;
-  if (changes.aria2path) aria2Config.path = changes.aria2path.newValue;
   if (changes.aria2enabled) aria2Config.enabled = changes.aria2enabled.newValue;
   if (changes.aria2fileSize) aria2Config.fileSize = changes.aria2fileSize.newValue;
 });
@@ -181,11 +169,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   } else if (message.action === 'saveConfig') {
     // 保存新的配置
     chrome.storage.sync.set({
-      aria2host: message.config.host,
-      aria2port: message.config.port,
-      aria2secure: message.config.secure,
+      rpcUrl: message.config.rpcUrl,
       aria2secret: message.config.secret,
-      aria2path: message.config.path,
       aria2enabled: message.config.enabled,
       aria2fileSize: message.config.fileSize
     }, () => {
@@ -341,7 +326,7 @@ function parseFilenameFromContentDisposition(contentDisposition) {
 
 // 发送URL到Aria2
 function sendToAria2(url, filename = '', cookie = '', referrer = '', inputOptions = {}) {
-  const rpcUrl = `${aria2Config.secure ? 'https' : 'http'}://${aria2Config.host}:${aria2Config.port}${aria2Config.path}`;
+  const rpcUrl = `${aria2Config.rpcUrl}`;
   referrer = referrer || new URL(url).origin;
   const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
 
@@ -542,7 +527,7 @@ function sendAria2BackgroundRequest(method, params = []) {
   // 发送HTTP请求给Aria2服务器
   return new Promise((resolve, reject) => {
     // 构建HTTP URL
-    const rpcUrl = `${aria2Config.secure ? 'https' : 'http'}://${aria2Config.host}:${aria2Config.port}${aria2Config.path}`;
+    const rpcUrl = `${aria2Config.rpcUrl}`;
     // 添加密钥参数
     if (aria2Config.secret) {
       params.unshift(`token:${aria2Config.secret}`);
