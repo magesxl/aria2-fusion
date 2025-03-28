@@ -70,7 +70,7 @@ aria2-fusion/
    max-connection-per-server：控制每个服务器的最大连接数。
    split：控制文件分块下载的最大数量。
    如果服务器不支持分片下载，必须将这两个参数设置为 1，否则会导致下载文件有问题 。 
--  aria2下载文件需要传输Cookie
+-  部分文件下载需要Cookie，aria2需要传输Cookie，不传输表现为只下载1kb文件，aria2报错文件已存在
 
 
 ## aria2 前端任务状态同步逻辑流程图
