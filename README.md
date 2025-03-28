@@ -71,3 +71,64 @@ aria2-fusion/
    split：控制文件分块下载的最大数量。
    如果服务器不支持分片下载，必须将这两个参数设置为 1，否则会导致下载文件有问题 。 
 -  aria2下载文件需要传输Cookie
+
+
+## aria2 前端任务状态同步逻辑流程图
+
+本流程图用于描述 aria2 前端任务刷新机制的核心逻辑，涵盖两个主要输入源：
+
+- WebSocket 通知（下载任务状态变更）
+- 用户主动删除任务
+
+并包含定时器刷新逻辑与任务状态判断。
+
+---
+
+### 逻辑说明
+
+
+- **onDownloadStart 通知**：启动定时器持续刷新任务进度
+- **任务终止状态或删除**：统一进入“任务状态变更处理器”，刷新任务列表
+- **定时器刷新逻辑**：每秒刷新一次，若无 active 状态任务则自动停止
+
+---
+
+### PlantUML 流程图
+
+
+```plantuml
+@startuml
+title aria2 前端任务状态同步逻辑
+
+start
+
+' === 输入事件源 ===
+fork
+  :接收到 WebSocket 通知;
+  if ("通知类型是 onDownloadStart?") then (是)
+    :启动定时器（每秒调用fetchAllTasks()）;
+  else
+    :进入任务状态变更处理器;
+  endif
+fork again
+  :用户点击删除按钮;
+  :调用 aria2.remove(gid);
+  :进入任务状态变更处理器;
+end fork
+
+' === 统一处理入口 ===
+:fetchAllTasks(),更新任务列表到 UI;
+
+' === 定时器刷新逻辑 ===
+repeat
+  :定时器触发 fetchAllTasks;
+  if ("还有 active 状态任务？") then (是)
+    :继续刷新;
+  else (否)
+    :停止定时器;
+    break
+  endif
+repeat while (active 存在)
+
+stop
+@enduml
