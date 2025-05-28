@@ -14,9 +14,9 @@ chrome.storage.sync.get({
   fileSize: 10 // 最小文件大小（MB），超过此大小的下载将被Aria2接管
 }, (config) => {
   aria2Config.rpcUrl = config.rpcUrl;
-  aria2Config.secret = config.aria2secret;
-  aria2Config.enabled = config.aria2enabled;
-  aria2Config.fileSize = config.aria2fileSize;
+  aria2Config.secret = config.secret;
+  aria2Config.enabled = config.enabled;
+  aria2Config.fileSize = config.fileSize;
 });
 
 // 监听配置变更
